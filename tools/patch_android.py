@@ -1,4 +1,4 @@
-# Them quyen camera/luu file + icon rieng cho app (chay sau "npx cap add android")
+# Thêm quyền camera/lưu file + icon riêng cho app (chạy sau "npx cap add android")
 import glob, os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -59,3 +59,45 @@ bg = 'android/app/src/main/res/values/ic_launcher_background.xml'
 if os.path.exists(bg):
     open(bg, 'w').write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#5B45E0</color>\n</resources>\n')
 print("patched")
+
+# ---- nhận file chia sẻ / "Mở bằng" ----
+FILTERS = """
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+            </intent-filter>"""
+s = open(p_manifest := 'android/app/src/main/AndroidManifest.xml', encoding='utf-8').read()
+if 'android.intent.action.SEND' not in s:
+    i = s.index('</intent-filter>') + len('</intent-filter>')
+    s = s[:i] + FILTERS + s[i:]
+    open(p_manifest, 'w', encoding='utf-8').write(s)
+
+import shutil
+jdir = 'android/app/src/main/java/vn/wordpdf/app'
+os.makedirs(jdir, exist_ok=True)
+for f in ('MainActivity.java', 'ShareInPlugin.java'):
+    shutil.copy(os.path.join('tools', 'android', f), os.path.join(jdir, f))
+print("share-in patched")
+
