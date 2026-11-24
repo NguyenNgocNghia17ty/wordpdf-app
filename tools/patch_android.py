@@ -65,28 +65,22 @@ FILTERS = """
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/pdf" />
-                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-                <data android:mimeType="application/msword" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/pdf" />
-                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-                <data android:mimeType="application/msword" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/msword" />
             </intent-filter>"""
 s = open(p_manifest := 'android/app/src/main/AndroidManifest.xml', encoding='utf-8').read()
 if 'android.intent.action.SEND' not in s:

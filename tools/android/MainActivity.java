@@ -49,7 +49,20 @@ public class MainActivity extends BridgeActivity {
                 uris.add(intent.getData());
             }
         } catch (Exception ignored) { }
-        if (uris.isEmpty()) return;
+        if (uris.isEmpty()) {
+            // Chia sẻ đường link / chữ (vd Google Docs) chứ không phải file
+            String text = null;
+            try { text = intent.getStringExtra(Intent.EXTRA_TEXT); } catch (Exception ignored) { }
+            if (Intent.ACTION_SEND.equals(action) && text != null) {
+                intent.setAction("vn.wordpdf.app.HANDLED");
+                List<JSObject> out = new ArrayList<>();
+                JSObject o = new JSObject();
+                o.put("text", text);
+                out.add(o);
+                ShareInPlugin.push(out);
+            }
+            return;
+        }
         intent.setAction("vn.wordpdf.app.HANDLED");
 
         new Thread(new Runnable() {

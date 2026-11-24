@@ -28,14 +28,21 @@ async function take() {
     const res = await ShareIn.take();
     const list = (res && res.files) || [];
     const got = [];
+    let linkOnly = false, skipped = 0;
     for (const it of list) {
+      if (it.text) { linkOnly = true; continue; }
+      if (!/\.(pdf|docx|docm|doc|jpe?g|png|webp|bmp|gif|heic)$/i.test(it.name || '') &&
+          !/pdf|word|image/i.test(it.mime || '')) { skipped++; continue; }
       try {
         const r = await fetch(Capacitor.convertFileSrc('file://' + it.path));
         const blob = await r.blob();
         got.push(new File([blob], it.name, { type: it.mime || blob.type }));
       } catch (e) { /* bỏ qua file lỗi */ }
     }
-    if (got.length) { injectFiles(got); toast(`Đã nhận ${got.length} file`); }
+    if (got.length) toast(`Đã nhận ${got.length} file` + (skipped ? ` (bỏ qua ${skipped} file không hỗ trợ)` : ''));
+    if (got.length) injectFiles(got);
+    else if (linkOnly) alert('Bạn vừa chia sẻ ĐƯỜNG LINK, không phải file.\n\nVới Google Docs: bấm ⋮ → Chia sẻ và xuất → Gửi bản sao → chọn PDF hoặc Word → chọn WordPDF.');
+    else if (skipped) toast('Chỉ nhận file Word (.docx), PDF hoặc ảnh');
     else if (list.length) toast('Không đọc được file được chia sẻ');
   } catch (e) {
     toast('Không nhận được file: ' + (e.message || e));
