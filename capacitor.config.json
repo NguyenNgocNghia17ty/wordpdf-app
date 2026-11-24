@@ -1,0 +1,6 @@
+{
+  "appId": "vn.wordpdf.app",
+  "appName": "WordPDF",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
