@@ -162,6 +162,8 @@ function newCanvas(w, h) {
 const FONT_STACK = 'Arial, "Segoe UI", Roboto, "Noto Sans", sans-serif';
 
 // ---------------------------------------------------------------- nguồn tài liệu
+// Mỗi nguồn: { count, size(i) -> {w,h} (pt), render(i, scale) -> canvas, close() }
+
 async function pdfSource(bytes) {
   const doc = await pdfjs.getDocument({ data: bytes }).promise;
   return {
@@ -204,30 +206,83 @@ async function imageSource(blob) {
 
 async function docxSource(blob, onStatus) {
   const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-20000px;top:0;width:900px;background:#fff;';
+  host.style.cssText = 'position:absolute;left:-30000px;top:0;background:#fff;';
   document.body.appendChild(host);
   onStatus && onStatus('Đang đọc file Word...');
   await renderDocx(blob, host, null, {
     inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: false,
     ignoreWidth: false, ignoreHeight: false, experimental: true, renderHeaders: true, renderFooters: true,
   });
-  const pages = [...host.querySelectorAll('section.docx')];
-  if (!pages.length) { host.remove(); throw new Error('Không đọc được nội dung Word'); }
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* */ } }
+  const sections = [...host.querySelectorAll('section.docx')];
+  if (!sections.length) { host.remove(); throw new Error('Không đọc được nội dung Word'); }
+
+  // ---- tự chia trang theo khổ giấy (file từ Google Docs không có dấu ngắt trang) ----
+  onStatus && onStatus('Đang chia trang...');
+  const pages = [];
+  for (const sec of sections) {
+    const cs = getComputedStyle(sec);
+    const R = sec.getBoundingClientRect();
+    const W = R.width;
+    let H = parseFloat(cs.minHeight);
+    if (!H || H < 50) H = W * 1.41421;
+    const padT = parseFloat(cs.paddingTop) || 0, padB = parseFloat(cs.paddingBottom) || 0;
+    const avail = Math.max(50, H - padT - padB);
+    const base = { sec, W, H, padT };
+    if (R.height <= H + 2) { pages.push({ ...base, y0: 0, y1: R.height, whole: true }); continue; }
+
+    const blocks = [];
+    const collect = el => {
+      for (const ch of el.children) {
+        const tag = ch.tagName;
+        if (tag === 'HEADER' || tag === 'FOOTER' || tag === 'STYLE') continue;
+        if (tag === 'ARTICLE') { collect(ch); continue; }
+        if (tag === 'TABLE') {
+          const rows = ch.querySelectorAll(':scope > tbody > tr, :scope > thead > tr, :scope > tr');
+          if (rows.length) { rows.forEach(r => blocks.push(r)); continue; }
+        }
+        blocks.push(ch);
+      }
+    };
+    collect(sec);
+
+    let start = padT, last = padT;
+    for (const bl of blocks) {
+      const r = bl.getBoundingClientRect();
+      if (r.height <= 0) continue;
+      const t = r.top - R.top, bt = r.bottom - R.top;
+      if (bt - start > avail) {
+        if (t > start + 1) { pages.push({ ...base, y0: start, y1: t }); start = t; }
+        while (bt - start > avail) { pages.push({ ...base, y0: start, y1: start + avail }); start += avail; }
+      }
+      last = Math.max(last, bt);
+    }
+    if (last > start + 1) pages.push({ ...base, y0: start, y1: last });
+  }
+
   const PX2PT = 0.75;
-  const cache = new Map();
   const BASE = 2;
+  const cache = new Map();
   return {
     count: pages.length,
-    async size(i) { const r = pages[i].getBoundingClientRect(); return { w: r.width * PX2PT, h: r.height * PX2PT }; },
+    async size(i) { return { w: pages[i].W * PX2PT, h: pages[i].H * PX2PT }; },
     async render(i, scale) {
+      const pg = pages[i];
       let c = cache.get(i);
       if (!c) {
-        c = await html2canvas(pages[i], { scale: BASE, backgroundColor: '#ffffff', logging: false, useCORS: true });
+        // x/y tính từ góc trên-trái của trang (section), không phải toạ độ màn hình
+        const slice = await html2canvas(pg.sec, {
+          scale: BASE, backgroundColor: '#ffffff', logging: false, useCORS: true,
+          x: 0, y: pg.y0, width: Math.ceil(pg.W), height: Math.ceil(pg.y1 - pg.y0),
+        });
+        c = newCanvas(pg.W * BASE, pg.H * BASE);
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(slice, 0, pg.whole ? 0 : pg.padT * BASE);
         cache.set(i, c);
         if (cache.size > 3) cache.delete(cache.keys().next().value);
       }
-      const r = pages[i].getBoundingClientRect();
-      const out = newCanvas(r.width * PX2PT * scale, r.height * PX2PT * scale);
+      const out = newCanvas(pg.W * PX2PT * scale, pg.H * PX2PT * scale);
       out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
       return out;
     },
@@ -410,7 +465,7 @@ function addNoise(canvas, strength) {
     if (noiseCache.size > 2) noiseCache.clear();
     n = new Int8Array(W * H);
     for (let i = 0; i < n.length; i++) {
-      const gauss = (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+      const gauss = (Math.random() + Math.random() + Math.random() - 1.5) * 2; // ~N(0,1)
       n[i] = Math.max(-127, Math.min(127, Math.round(gauss * strength)));
     }
     noiseCache.set(key, n);
@@ -447,6 +502,7 @@ export function planPages(cfg, n) {
 const toJpeg = (c, q) => new Promise((res, rej) =>
   c.toBlob(b => (b ? b.arrayBuffer().then(a => res(new Uint8Array(a))) : rej(new Error('Lỗi tạo ảnh'))), 'image/jpeg', q / 100));
 
+/** Xử lý 1 nguồn, thêm trang vào outDoc (PDFDocument). */
 export async function processSource(src, outDoc, cfg, ctx, onProgress, isCancelled) {
   const n = src.count;
   const { keepset, order } = planPages(cfg, n);
@@ -460,7 +516,7 @@ export async function processSource(src, outDoc, cfg, ctx, onProgress, isCancell
     const { w, h } = await src.size(idx);
     const c = await renderPage(src, idx, isBlur, k + 1, order.length, cfg, ctx, cfg.dpi);
     const jpg = await toJpeg(c, cfg.quality);
-    c.width = c.height = 1;
+    c.width = c.height = 1; // giải phóng bộ nhớ
     const img = await outDoc.embedJpg(jpg);
     const page = outDoc.addPage([w, h]);
     page.drawImage(img, { x: 0, y: 0, width: w, height: h });
