@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<title>WordPDF</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">W</div>
+    <div><b>WordPDF</b><small>PDF ảnh có watermark</small></div>
+  </div>
+  <button id="syncBtn" class="ghost">⇅ Đồng bộ</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2><span class="num">1</span>Chọn file</h2>
+    <label class="drop">
+      <input type="file" id="fileInput" multiple accept=".pdf,.docx,.docm,.doc,image/*" hidden>
+      <div class="dropicon">＋</div>
+      <b>Chọn file Word, PDF hoặc ảnh</b>
+      <small>Chọn được nhiều file cùng lúc</small>
+    </label>
+    <div id="fileList"></div>
+  </section>
+
+  <section class="card" id="previewCard" hidden>
+    <h2>Xem trước</h2>
+    <div class="pv"><canvas id="pv"></canvas><div class="pvbusy" id="pvBusy">Đang tạo...</div></div>
+    <div class="pvnav">
+      <button id="pvPrev" class="round">‹</button>
+      <span id="pvLbl">–</span>
+      <button id="pvNext" class="round">›</button>
+    </div>
+    <p class="muted center" id="pvInfo"></p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span>Watermark</h2>
+    <label class="lbl">Chữ watermark</label>
+    <textarea id="wmText" rows="2" placeholder="VD: Tên của bạn – 09xx xxx xxx"></textarea>
+    <div class="chips" id="wmHist"></div>
+    <label class="lbl">Tên khách <span class="muted">(không bắt buộc)</span></label>
+    <input id="khach" placeholder="VD: Anh Nam" autocomplete="off">
+    <div class="chips" id="khHist"></div>
+    <label class="lbl">Kiểu</label>
+    <div class="seg" data-key="style"></div>
+    <label class="lbl">Độ đậm</label>
+    <div class="seg" data-key="strength"></div>
+    <label class="lbl">Màu</label>
+    <div class="colors" id="colors"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span>Trang</h2>
+    <div class="seg" data-key="pages"></div>
+    <div id="firstBox">
+      <div class="row">
+        <span>Giữ</span>
+        <div class="stepper">
+          <button data-d="-1" type="button">−</button>
+          <input id="firstN" type="number" inputmode="numeric" min="1">
+          <button data-d="1" type="button">+</button>
+        </div>
+        <span>trang đầu</span>
+      </div>
+      <label class="switch"><input type="checkbox" id="blurRest"><i></i><span>Các trang sau: làm mờ<br><small class="muted">khách vẫn thấy đủ số trang nhưng không đọc được</small></span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span>Xuất file</h2>
+    <label class="lbl">Chất lượng</label>
+    <div class="seg" data-key="quality"></div>
+    <p class="muted small">Nhẹ: chữ hơi mờ, file rất nhẹ · Chuẩn: rõ bình thường · Nét: căng nét như bản gốc (file nặng)</p>
+    <label class="switch"><input type="checkbox" id="protect"><i></i><span>Khóa in, copy &amp; chỉnh sửa</span></label>
+    <label class="switch"><input type="checkbox" id="antiocr"><i></i><span>Chống quét chữ (OCR)<br><small class="muted">file nặng hơn một chút</small></span></label>
+
+    <details class="adv">
+      <summary>Tùy chọn thêm</summary>
+      <label class="lbl">Mã QR (link Zalo / Facebook…)</label>
+      <input id="qrText" placeholder="VD: https://zalo.me/09xxxxxxxx">
+      <label class="lbl">Chân trang</label>
+      <input id="footerText" placeholder="VD: Bản cho {khach} – trang {trang}/{tong}">
+      <label class="lbl">Chữ trên trang bị làm mờ</label>
+      <textarea id="blurText" rows="2"></textarea>
+      <label class="lbl">Mật khẩu mở file <span class="muted">(trống = không cần)</span></label>
+      <input id="userPw" type="password" autocomplete="new-password">
+      <label class="lbl">Tên file xuất</label>
+      <input id="nameTpl" placeholder="{ten}_protected">
+      <p class="muted small">{ten} = tên file gốc · {khach} · {ngay}</p>
+      <label class="lbl">Logo (ảnh PNG)</label>
+      <div class="row">
+        <label class="btn small"><input type="file" id="logoInput" accept="image/*" hidden>Chọn logo</label>
+        <span id="logoName" class="muted">Không có</span>
+        <button id="logoClear" class="link" type="button">Bỏ</button>
+      </div>
+      <label class="switch"><input type="checkbox" id="merge"><i></i><span>Ghép tất cả thành 1 file</span></label>
+      <button id="resetBtn" class="link" type="button">Đặt lại mặc định</button>
+    </details>
+  </section>
+
+  <section class="card" id="results" hidden>
+    <h2>Kết quả</h2>
+    <div id="resList"></div>
+  </section>
+  <p class="muted center small foot">Cài đặt được tự nhớ cho lần sau</p>
+</main>
+
+<div class="bottombar">
+  <div class="prog"><div id="progBar"></div></div>
+  <div class="barrow">
+    <div id="status" class="muted">Sẵn sàng</div>
+    <button id="cancelBtn" class="link danger" hidden>Hủy</button>
+  </div>
+  <button id="goBtn" class="primary">CHUYỂN ĐỔI</button>
+</div>
+
+<dialog id="syncDlg">
+  <div class="dlg">
+    <div class="dlghead"><b>Đồng bộ cài đặt</b><button class="round" id="syncClose">✕</button></div>
+    <p class="muted small">Chữ watermark, tên khách đã dùng và các lựa chọn sẽ giống nhau trên máy tính &amp; điện thoại.</p>
+    <h3>Nhận từ máy tính</h3>
+    <p class="muted small">Trên máy tính bấm <b>📱 Đồng bộ điện thoại</b>, rồi quét mã QR hiện ra:</p>
+    <button id="scanBtn" class="primary">📷 Quét QR</button>
+    <div id="scanBox" hidden><video id="scanVideo" playsinline muted></video><p class="muted small center">Đưa camera vào mã QR trên màn hình máy tính</p></div>
+    <p class="muted small">…hoặc dán mã (WPDF1…) vào đây:</p>
+    <textarea id="syncIn" rows="3" placeholder="WPDF1...."></textarea>
+    <button id="syncImport" class="btn">Nhận cài đặt</button>
+    <h3>Gửi sang máy tính</h3>
+    <div class="qrbox"><canvas id="syncQr"></canvas></div>
+    <button id="syncCopy" class="btn">Sao chép mã</button>
+    <p class="muted small">Gửi mã qua Zalo cho chính mình, trên máy tính bấm Đồng bộ → dán vào ô “Nhận cài đặt”.</p>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
