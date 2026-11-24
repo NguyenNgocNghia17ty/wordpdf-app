@@ -14,7 +14,7 @@ const LS_UI = 'wpdf_ui', LS_LOGO = 'wpdf_logo', LS_LOGO_NAME = 'wpdf_logo_name';
 const native = Capacitor.isNativePlatform();
 
 let ui = normalizeUi(safeJson(localStorage.getItem(LS_UI)));
-let files = [];
+let files = [];          // {id, file, kind, status, cls}
 let selected = null;
 let running = false, cancelled = false;
 let logoBitmap = null;
@@ -22,12 +22,13 @@ let pv = { page: 1, total: 0, src: null, srcId: null, req: 0, timer: null };
 let idSeq = 1;
 
 function safeJson(s) { try { return JSON.parse(s || '{}'); } catch { return {}; } }
-function save() { try { localStorage.setItem(LS_UI, JSON.stringify(ui)); } catch { /* day bo nho */ } }
+function save() { try { localStorage.setItem(LS_UI, JSON.stringify(ui)); } catch { /* đầy bộ nhớ */ } }
 function toast(t, ms = 2200) {
   const el = $('toast'); el.textContent = t; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), ms);
 }
 
+// ------------------------------------------------------------ dựng giao diện
 const SEGS = { style: STYLE_OPTS, strength: STRENGTH_OPTS, quality: QUALITY_OPTS, pages: PAGES_OPTS };
 
 function buildSegs() {
@@ -104,6 +105,7 @@ function changed(full = true) {
   schedulePreview();
 }
 
+// ------------------------------------------------------------ file
 $('fileInput').addEventListener('change', e => {
   const list = [...e.target.files];
   e.target.value = '';
@@ -142,6 +144,7 @@ function renderFiles() {
 }
 function setStatus(f, text, cls = '') { f.status = text; f.cls = cls; renderFiles(); }
 
+// ------------------------------------------------------------ logo
 async function loadLogoFromStorage() {
   const d = localStorage.getItem(LS_LOGO);
   if (!d) return;
@@ -156,10 +159,11 @@ $('logoInput').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   const bmp = await createImageBitmap(f);
+  // thu nhỏ để lưu bộ nhớ
   const s = Math.min(1, 800 / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas'); c.width = bmp.width * s; c.height = bmp.height * s;
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  try { localStorage.setItem(LS_LOGO, c.toDataURL('image/png')); localStorage.setItem(LS_LOGO_NAME, f.name); } catch { /* bo qua */ }
+  try { localStorage.setItem(LS_LOGO, c.toDataURL('image/png')); localStorage.setItem(LS_LOGO_NAME, f.name); } catch { /* bỏ qua */ }
   logoBitmap = await createImageBitmap(c); logoBitmap.__id = Date.now();
   $('logoName').textContent = f.name;
   schedulePreview();
@@ -170,6 +174,7 @@ $('logoClear').onclick = () => {
 
 function currentCfg() { const c = uiToCfg(ui); c.logo = logoBitmap; return c; }
 
+// ------------------------------------------------------------ xem trước
 function schedulePreview(ms = 400) { clearTimeout(pv.timer); pv.timer = setTimeout(doPreview, ms); }
 
 async function getPreviewSource(f) {
@@ -227,6 +232,7 @@ $('pvPrev').onclick = () => { if (pv.page > 1) { pv.page--; schedulePreview(20);
 $('pvNext').onclick = () => { if (pv.page < pv.total) { pv.page++; schedulePreview(20); } };
 window.addEventListener('resize', () => schedulePreview(300));
 
+// ------------------------------------------------------------ lưu & chia sẻ
 function bytesToB64(bytes) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -241,7 +247,7 @@ async function saveOutput(name, bytes) {
       return { uri: r.uri, where: 'Tài liệu (Documents) › WordPDF' };
     } catch (e) {
       const r = await Filesystem.writeFile({ path: name, data, directory: Directory.Cache, recursive: true });
-      return { uri: r.uri, where: 'bộ nhớ tạm – hãy bấm Gửi để lưu' };
+      return { uri: r.uri, where: 'bộ nhớ tạm – hãy bấm Chia sẻ để lưu' };
     }
   }
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
@@ -255,6 +261,19 @@ async function shareOutput(r) {
       await navigator.share({ files: [new File([r.bytes], r.name, { type: 'application/pdf' })], title: r.name });
     } else downloadOutput(r);
   } catch (e) { if (!String(e).includes('cancel')) toast('Không chia sẻ được: ' + (e.message || e)); }
+}
+async function autoShare(list) {
+  try {
+    if (native) {
+      await Share.share({ title: list.length === 1 ? list[0].name : `${list.length} file PDF`, files: list.map(r => r.uri), dialogTitle: 'Gửi file PDF qua…' });
+    } else {
+      const fs = list.map(r => new File([r.bytes], r.name, { type: 'application/pdf' }));
+      if (navigator.canShare && navigator.canShare({ files: fs })) await navigator.share({ files: fs });
+      else toast('Xong! Bấm “Chia sẻ” để gửi', 3000);
+    }
+  } catch (e) {
+    if (!/cancel/i.test(String(e && (e.message || e)))) toast('Xong! Bấm “Gửi / Mở” để gửi lại', 3000);
+  }
 }
 function downloadOutput(r) {
   if (native) { toast('Đã lưu ở ' + r.where, 3000); return; }
@@ -274,8 +293,10 @@ function addResult(r) {
     row.appendChild(d);
   }
   $('resList').prepend(row);
+
 }
 
+// ------------------------------------------------------------ chạy
 function progress(frac, text) {
   $('progBar').style.width = `${Math.round(frac * 100)}%`;
   if (text) $('status').textContent = text;
@@ -299,6 +320,7 @@ $('goBtn').onclick = async () => {
   const cfg = currentCfg();
   const t0 = performance.now();
   let ok = 0, merged = null, mergedPages = 0;
+  const made = [];
   try {
     if (cfg.merge) merged = await newOutDoc();
     for (let i = 0; i < jobs.length; i++) {
@@ -321,6 +343,7 @@ $('goBtn').onclick = async () => {
           const bytes = await finalizeDoc(doc, name.replace(/\.pdf$/, ''), cfg);
           const r = { name, bytes, pages: info.pagesOut, ...(await saveOutput(name, bytes)) };
           addResult(r);
+          made.push(r);
           setStatus(f, `✓ Xong · ${info.pagesOut} trang${info.blurred ? `, ${info.blurred} mờ` : ''} · ${(bytes.length / 1048576).toFixed(1)} MB`, 'ok');
         }
         ok++;
@@ -334,7 +357,9 @@ $('goBtn').onclick = async () => {
       progress(0.98, 'Đang ghép file...');
       const name = (ui.khach ? ui.khach.replace(/[\\/:*?"<>|]+/g, '_') + '_' : '') + 'tong_hop.pdf';
       const bytes = await finalizeDoc(merged, name.replace(/\.pdf$/, ''), cfg);
-      addResult({ name, bytes, pages: mergedPages, ...(await saveOutput(name, bytes)) });
+      const r = { name, bytes, pages: mergedPages, ...(await saveOutput(name, bytes)) };
+      addResult(r);
+      made.push(r);
     }
   } finally {
     running = false;
@@ -342,12 +367,15 @@ $('goBtn').onclick = async () => {
     $('cancelBtn').hidden = true;
     const dt = ((performance.now() - t0) / 1000).toFixed(1);
     progress(cancelled ? 0 : 1, cancelled ? 'Đã hủy' : `Xong ${ok}/${jobs.length} file · ${dt}s`);
-    if (ok && !cancelled) { toast('Xong! Bấm “Gửi / Mở” để gửi Zalo, Drive…', 3000); $('results').scrollIntoView({ behavior: 'smooth' }); }
+    if (ok && !cancelled) $('results').scrollIntoView({ behavior: 'smooth' });
     schedulePreview(300);
   }
+  // Xong là tự bật bảng chia sẻ (Zalo, Messenger, Drive...) với tất cả file vừa tạo
+  if (made.length && !cancelled) await autoShare(made);
 };
 $('cancelBtn').onclick = () => { cancelled = true; $('status').textContent = 'Đang hủy...'; };
 
+// ------------------------------------------------------------ đồng bộ
 let scanStream = null, scanTimer = null;
 $('syncBtn').onclick = async () => {
   $('syncIn').value = '';
@@ -396,7 +424,7 @@ $('scanBtn').onclick = async () => {
       c.width = v.videoWidth; c.height = v.videoHeight; g.drawImage(v, 0, 0);
       const r = jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
       if (r && r.data.includes('WPDF1.')) importCode(r.data);
-    } catch { /* tiep tuc quet */ }
+    } catch { /* tiếp tục quét */ }
   }, 300);
 };
 
@@ -406,6 +434,7 @@ $('resetBtn').onclick = () => {
   save(); loadFields(); schedulePreview();
 };
 
+// ------------------------------------------------------------ khởi động
 buildSegs();
 bindFields();
 loadFields();
